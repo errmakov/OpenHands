@@ -12,13 +12,10 @@ import { retrieveAxiosErrorMessage } from "#/utils/retrieve-axios-error-message"
 import { settingsLikeMainScrollClassName } from "#/utils/settings-like-page-layout-classes";
 import {
   findCatalogEntryForServer,
-  getMcpMarketplaceCatalog,
   installedServerMatchesQuery,
 } from "#/utils/mcp-marketplace-utils";
-import {
-  INTEGRATION_CATALOG as MCP_MARKETPLACE,
-  type IntegrationCatalogEntry as MarketplaceEntry,
-} from "@openhands/extensions/integrations";
+import type { IntegrationCatalogEntry as MarketplaceEntry } from "@openhands/extensions/integrations";
+import { useMcpMarketplaceCatalog } from "#/hooks/use-mcp-marketplace-catalog";
 import { MCPServerConfig } from "#/types/mcp-server";
 import { flattenMcpConfig } from "#/utils/mcp-installed-servers";
 import {
@@ -27,6 +24,7 @@ import {
   MarketplaceSection,
   InstallServerModal,
   CustomServerEditor,
+  ImportCatalogModal,
   type McpSectionFilter,
 } from "#/components/features/mcp-page";
 
@@ -45,6 +43,7 @@ export default function MCPPage() {
     React.useState<MarketplaceEntry | null>(null);
   const [editingServer, setEditingServer] =
     React.useState<MCPServerConfig | null>(null);
+  const [isImportingCatalog, setIsImportingCatalog] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState("");
   const [sectionFilter, setSectionFilter] =
     React.useState<McpSectionFilter>("all");
@@ -53,7 +52,7 @@ export default function MCPPage() {
     settings?.mcp_config ??
     parseMcpConfig(settings?.agent_settings?.mcp_config);
   const allServers = flattenMcpConfig(mcpConfig);
-  const mcpMarketplace = getMcpMarketplaceCatalog(MCP_MARKETPLACE);
+  const { catalog: mcpMarketplace } = useMcpMarketplaceCatalog();
 
   // Filter installed servers by the search query. We pair each server
   // with its catalog entry (if any) so the search can match friendly
@@ -123,15 +122,26 @@ export default function MCPPage() {
                   {t(I18nKey.MCP$PAGE_DESCRIPTION)}
                 </div>
               </div>
-              <BrandButton
-                type="button"
-                variant="secondary"
-                testId="mcp-add-custom-server"
-                className="flex-shrink-0 whitespace-nowrap"
-                onClick={() => setEditingServer({ id: "", type: "sse" })}
-              >
-                {t(I18nKey.MCP$ADD_CUSTOM)}
-              </BrandButton>
+              <div className="flex flex-shrink-0 flex-wrap gap-2">
+                <BrandButton
+                  type="button"
+                  variant="secondary"
+                  testId="mcp-import-catalog"
+                  className="whitespace-nowrap"
+                  onClick={() => setIsImportingCatalog(true)}
+                >
+                  {t(I18nKey.MCP$IMPORT_CATALOG)}
+                </BrandButton>
+                <BrandButton
+                  type="button"
+                  variant="secondary"
+                  testId="mcp-add-custom-server"
+                  className="whitespace-nowrap"
+                  onClick={() => setEditingServer({ id: "", type: "sse" })}
+                >
+                  {t(I18nKey.MCP$ADD_CUSTOM)}
+                </BrandButton>
+              </div>
             </div>
           </div>
 
@@ -172,6 +182,10 @@ export default function MCPPage() {
             existingServers={allServers}
             onClose={() => setInstallEntry(null)}
           />
+        )}
+
+        {isImportingCatalog && (
+          <ImportCatalogModal onClose={() => setIsImportingCatalog(false)} />
         )}
 
         {/* Custom (or non-marketplace) server editor. The empty-id

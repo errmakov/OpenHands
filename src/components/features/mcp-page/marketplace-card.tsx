@@ -1,4 +1,5 @@
 import type { KeyboardEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { I18nKey } from "#/i18n/declaration";
 import type { IntegrationCatalogEntry as MarketplaceEntry } from "@openhands/extensions/integrations";
 import { McpLogoBadge } from "#/components/features/mcp-logo-badge";
@@ -12,15 +13,19 @@ import {
 
 interface MarketplaceCardProps {
   entry: MarketplaceEntry;
+  /** Imported from JSON this session rather than bundled with the app. */
+  isImported?: boolean;
   onClick: () => void;
   onAdd: () => void;
 }
 
 export function MarketplaceCard({
   entry,
+  isImported = false,
   onClick,
   onAdd,
 }: MarketplaceCardProps) {
+  const { t } = useTranslation("openhands");
   const transport = getDefaultMcpTransport(entry);
   const transportLabel = (() => {
     switch (transport?.kind) {
@@ -65,8 +70,16 @@ export function MarketplaceCard({
           <header className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               <h3 className="truncate text-sm font-semibold">{entry.name}</h3>
-              <p className="mt-0.5 text-xs text-tertiary-alt">
+              <p className="mt-0.5 flex items-center gap-2 text-xs text-tertiary-alt">
                 {transportLabel}
+                {isImported ? (
+                  <span
+                    data-testid="mcp-marketplace-imported-badge"
+                    className="rounded border border-border px-1.5 py-px text-xs font-medium uppercase tracking-wide text-tertiary-light"
+                  >
+                    {t(I18nKey.MCP$IMPORTED_BADGE)}
+                  </span>
+                ) : null}
               </p>
             </div>
             <CirclePlusCheckToggle

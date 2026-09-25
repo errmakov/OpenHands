@@ -6,6 +6,7 @@ import {
   fireEvent,
   waitFor,
 } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import MCPPage from "#/routes/mcp";
 import SettingsService from "#/api/settings-service/settings-service.api";
@@ -13,6 +14,7 @@ import McpService from "#/api/mcp-service/mcp-service.api";
 import { MOCK_DEFAULT_USER_SETTINGS } from "#/mocks/handlers";
 import { Settings } from "#/types/settings";
 import { ActiveBackendProvider } from "#/contexts/active-backend-context";
+import { useImportedMcpCatalogStore } from "#/stores/imported-mcp-catalog-store";
 
 function buildSettings(overrides: Partial<Settings> = {}): Settings {
   return {
@@ -43,6 +45,7 @@ function renderPage() {
 describe("MCPPage", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    useImportedMcpCatalogStore.setState({ entries: [] });
     // Pre-flight connectivity test must pass so save mutations are reached.
     vi.spyOn(McpService, "testServer").mockResolvedValue({
       ok: true,
@@ -393,6 +396,107 @@ describe("MCPPage", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("mcp-custom-editor")).toBeInTheDocument();
+    });
+  });
+
+  describe("catalog JSON import", () => {
+    const importedEntry = {
+      id: "internal-tools",
+      name: "Internal tools",
+      description: "Private stdio server.",
+      docsUrl: "https://example.com/docs",
+      connectionOptions: [
+        {
+          id: "api",
+          provider: "mcp",
+          transport: {
+            kind: "stdio",
+            serverName: "internal-tools",
+            command: "npx",
+            args: ["-y", "@example/internal-tools"],
+            envFields: [
+              {
+                key: "INTERNAL_TOKEN",
+                label: "Token",
+                type: "password",
+                helperText: "Create one in the admin console.",
+                required: true,
+              },
+            ],
+          },
+          auth: { strategy: "none" },
+        },
+      ],
+    };
+
+    it("adds a pasted entry to the library as an imported tile that installs like a bundled one", async () => {
+      vi.spyOn(SettingsService, "getSettings").mockResolvedValue(
+        buildSettings(),
+      );
+      const saveSpy = vi
+        .spyOn(SettingsService, "createMcpServer")
+        .mockResolvedValue(true);
+
+      renderPage();
+
+      fireEvent.click(await screen.findByTestId("mcp-import-catalog"));
+      fireEvent.change(screen.getByTestId("mcp-import-catalog-paste"), {
+        target: { value: JSON.stringify(importedEntry) },
+      });
+      fireEvent.click(screen.getByTestId("mcp-import-catalog-submit"));
+
+      const tile = await screen.findByTestId(
+        "mcp-marketplace-card-internal-tools",
+      );
+      expect(screen.queryByTestId("mcp-import-catalog-modal")).toBeNull();
+      expect(
+        within(tile).getByTestId("mcp-marketplace-imported-badge"),
+      ).toHaveTextContent("MCP$IMPORTED_BADGE");
+      expect(screen.getAllByTestId(/^mcp-marketplace-card-/)[0]).toBe(tile);
+
+      fireEvent.click(tile);
+      await screen.findByTestId("mcp-install-modal");
+      fireEvent.change(screen.getByTestId("mcp-install-field-INTERNAL_TOKEN"), {
+        target: { value: "secret-token" },
+      });
+      fireEvent.click(screen.getByTestId("mcp-install-submit"));
+
+      await waitFor(() => expect(saveSpy).toHaveBeenCalledTimes(1));
+      expect(saveSpy).toHaveBeenCalledWith(
+        "internal-tools",
+        expect.objectContaining({
+          transport: "stdio",
+          command: "npx",
+          args: ["-y", "@example/internal-tools"],
+        }),
+      );
+    });
+
+    it("shows validation errors for an uploaded file and imports nothing", async () => {
+      vi.spyOn(SettingsService, "getSettings").mockResolvedValue(
+        buildSettings(),
+      );
+      const user = userEvent.setup();
+
+      renderPage();
+
+      await user.click(await screen.findByTestId("mcp-import-catalog"));
+      await user.upload(
+        screen.getByTestId("mcp-import-catalog-file"),
+        new File(
+          [JSON.stringify({ ...importedEntry, docsUrl: "javascript:x" })],
+          "internal-tools.json",
+          { type: "application/json" },
+        ),
+      );
+      await user.click(screen.getByTestId("mcp-import-catalog-submit"));
+
+      const errors = await screen.findByTestId("mcp-import-catalog-errors");
+      expect(errors).toHaveTextContent("internal-tools.json");
+      expect(errors).toHaveTextContent("MCP$IMPORT_ERROR_INVALID_FIELD");
+      expect(
+        screen.queryByTestId("mcp-marketplace-card-internal-tools"),
+      ).toBeNull();
     });
   });
 });

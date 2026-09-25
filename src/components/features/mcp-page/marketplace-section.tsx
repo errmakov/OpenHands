@@ -1,14 +1,11 @@
 import { useTranslation } from "react-i18next";
 import { I18nKey } from "#/i18n/declaration";
-import {
-  INTEGRATION_CATALOG as MCP_MARKETPLACE,
-  type IntegrationCatalogEntry as MarketplaceEntry,
-} from "@openhands/extensions/integrations";
+import type { IntegrationCatalogEntry as MarketplaceEntry } from "@openhands/extensions/integrations";
 import {
   getMarketplaceEntriesByPopularity,
-  getMcpMarketplaceCatalog,
   marketplaceEntryMatchesQuery,
 } from "#/utils/mcp-marketplace-utils";
+import { useMcpMarketplaceCatalog } from "#/hooks/use-mcp-marketplace-catalog";
 import { MarketplaceCard } from "./marketplace-card";
 import {
   extensionModuleCardGridClassName,
@@ -29,9 +26,15 @@ export function MarketplaceSection({
 }: MarketplaceSectionProps) {
   const { t } = useTranslation("openhands");
 
-  const visibleEntries = getMarketplaceEntriesByPopularity(
-    getMcpMarketplaceCatalog(MCP_MARKETPLACE),
-  ).filter((entry) => marketplaceEntryMatchesQuery(entry, query));
+  const { catalog, importedIds } = useMcpMarketplaceCatalog();
+
+  // Imported entries lead the grid so a freshly imported file is easy to find.
+  const visibleEntries = [
+    ...catalog.filter((entry) => importedIds.has(entry.id)),
+    ...getMarketplaceEntriesByPopularity(
+      catalog.filter((entry) => !importedIds.has(entry.id)),
+    ),
+  ].filter((entry) => marketplaceEntryMatchesQuery(entry, query));
 
   return (
     <section
@@ -61,6 +64,7 @@ export function MarketplaceSection({
               <MarketplaceCard
                 key={entry.id}
                 entry={entry}
+                isImported={importedIds.has(entry.id)}
                 onClick={() => onSelect(entry)}
                 onAdd={() => onAdd(entry)}
               />
